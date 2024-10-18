@@ -278,7 +278,7 @@ class Ji_Dog_Env(gym.Env):
         reward += math.exp(-abs(pz-z_Goal))
         # reward += k3 * math.exp(-abs(pz-z_Goal))  # an additional coefficient can be added
 
-        # Stability reward
+        # Stability penalty
         reward += min(0, r_allow - abs(r)) + min(0, p_allow - abs(p))
         # reward += k5 * (min(0, r_allow - abs(r)) + min(0, p_allow - abs(p)))  # an additional coefficient can be added
 
