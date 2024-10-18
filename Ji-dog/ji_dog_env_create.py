@@ -23,15 +23,6 @@ import gym
 from omni.isaac.core.objects import DynamicCuboid
 import numpy as np
 
-class AdjustableSlopeEnv:
-    def __init__(self, world):
-        self.world = world
-        self.slope = None
-        self.setup_slope()
-
-
-
-
 class Ji_Dog_Env(gym.Env):
     def __init__(self) -> None:
         super(Ji_Dog_Env, self).__init__()
