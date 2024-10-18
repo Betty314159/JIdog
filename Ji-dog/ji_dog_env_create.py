@@ -230,7 +230,16 @@ class Ji_Dog_Env(gym.Env):
         # $(c_1, c_2, c_3, c_4)$: The state of each foot's contact with the ground (Boolean values) where $c_i=1$ indicates that the $i$-th foot is in contact with the ground and $c_i=0$ indicates no contact.
         self.contact_state = self.on_step()
 
-        return 
+        observation = {
+            'Robot Position': self.robot_position,  # 质心位置
+            'Robot Orientation': self.robot_orientation,  # 质心姿态
+            'Robot Linear Velocity': self.robot_linear_velocity,  # 质心速度
+            'Robot Angular Velocity': self.robot_angular_velocity,  # 质心角速度
+            'Joint positions': self.joint_positions,
+            'Joint velocities':self.joint_velocities
+        }
+
+        return observation
 
     def calculate_reward(self):
         # pos, ori are position and orientation of the mass centre of the dog
@@ -329,7 +338,7 @@ class Ji_Dog_Env(gym.Env):
                 joint_efforts = None,
                 joint_velocities = 500*action
                 )
-            print('move', action0)
+            print('move', action)
             self.joint_controller.apply_action(action)
             # self.robot.advance(step_size, action)
         
