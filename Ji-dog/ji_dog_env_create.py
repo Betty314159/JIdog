@@ -222,10 +222,10 @@ class Ji_Dog_Env(gym.Env):
         self.contact_state = self.on_step()
 
         observation = {
-            'Robot Position': self.robot_position,  # 质心位置
-            'Robot Orientation': self.robot_orientation,  # 质心姿态
-            'Robot Linear Velocity': self.robot_linear_velocity,  # 质心速度
-            'Robot Angular Velocity': self.robot_angular_velocity,  # 质心角速度
+            'Robot Position': self.robot_position, 
+            'Robot Orientation': self.robot_orientation,  
+            'Robot Linear Velocity': self.robot_linear_velocity,  
+            'Robot Angular Velocity': self.robot_angular_velocity,  
             'Joint positions': self.joint_positions,
             'Joint velocities':self.joint_velocities
         }
