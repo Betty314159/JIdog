@@ -2,7 +2,7 @@
 ## Project Structure
 
 - **Folders**:
-	- **`Model`**: Contains the Ji Dog model and a video of the model structure.
+	- **`Model`**: Contains the Ji Dog model and a video of the model.
 	- **`Model_Checkpoints`**: Stores trained PPO model checkpoints for easy resumption of training or evaluation.
 	- **`Previous_Report`**: Contains prior reports and documentation related to the project.
 
