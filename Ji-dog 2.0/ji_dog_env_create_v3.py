@@ -338,7 +338,7 @@ class Ji_Dog_Env(gym.Env):
 
     def calculate_actual_gait_period(self):
         velocities = np.array(self.joint_velocities)
-        zero_crossings = np.where(np.diff(np.sign(velocities[:, 0])))[0]  # 检测第一个关节的速度零点
+        zero_crossings = np.where(np.diff(np.sign(velocities[:, 0])))[0]  
         if len(zero_crossings) < 2:
             return 0  
         period = (zero_crossings[-1] - zero_crossings[-2]) * self.time_step
