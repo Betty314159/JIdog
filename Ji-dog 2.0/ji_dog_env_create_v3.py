@@ -187,6 +187,7 @@ class Ji_Dog_Env(gym.Env):
         # Get the current joint angles (positions) and velocities via articulation_view
         joint_positions = self.joint_view.get_joint_positions()
         joint_velocities = self.joint_view.get_joint_velocities()
+        # print(joint_positions)
 
         return joint_positions, joint_velocities
 
@@ -251,56 +252,59 @@ class Ji_Dog_Env(gym.Env):
         return observation
 
     def calculate_reward(self):
-        # pos, ori are position and orientation of the mass centre of the dog
-        # cont is the contact indicator of the dogs
-        reward = 0 + 4.1
-        pos = self.robot_position
-        ori = self.robot_orientation
-        cont = self.contact_state
+        # 分解奖励部分
+        rewards = {
+            "distance_reward": 0,
+            "fall_penalty": 0,
+            "symmetry_reward": 0,
+            "period_penalty": 0,
+            "contact_penalty": 0,
+            "smoothness_penalty": 0,
+        }
 
-        [x_Goal, y_Goal, z_Goal] = self.goal  # x,y position of goal
-        Goal_reward = 100  # define Goal reward
-        Fall_penalty = -10  # define Fall penalty
-        Contact_penalty = -5  # define Contact Point Penalty
-        r_allow = 10  # degree unit
-        p_allow = 10  # degree unit
+        # 目标点奖励
+        distance_to_goal = np.sqrt((self.robot_position[0] - self.goal[0]) ** 2 +
+                                (self.robot_position[1] - self.goal[1]) ** 2)
+        normalized_distance = 1 - (distance_to_goal / 10)
+        rewards["distance_reward"] = 100 * normalized_distance
 
-        px = pos[0]
-        py = pos[1]
-        pz = pos[2]
-        [r, p, y] = ori
+        # 摔倒惩罚
+        if self.robot_position[2] < 0.1 or abs(self.robot_orientation[1]) > 20:
+            rewards["fall_penalty"] = -10
 
-        # Contact point definition according to the professor
-        L1 = cont[0]  # left legs
-        L2 = cont[1]
-        R1 = cont[2]  # right legs
-        R2 = cont[3]
+        # 对称奖励
+        rewards["symmetry_reward"] = -np.abs(self.joint_positions[0][0] - self.joint_positions[0][2]) - \
+                                    np.abs(self.joint_positions[0][1] - self.joint_positions[0][3])
 
-        # Goal reward
-        if px == x_Goal and py == y_Goal:
-            reward += Goal_reward
+        # 周期性惩罚
+        actual_period = self.calculate_actual_gait_period()
+        rewards["period_penalty"] = -np.abs(1.0 - actual_period)
 
-        # Fall Penalty
-        if pz == 0:
-            reward += Fall_penalty
+        # 接触点奖励
+        desired_contact_pattern = [[1, 0, 1, 0], [0, 1, 0, 1]]
+        if  self.on_step() not in desired_contact_pattern:
+            rewards["contact_penalty"] = -1
 
-        # Contact Point Penalty
-        if [L1, L2, R1, R2] == [1, 1, 1, 1] or [L1, L2] == [0, 0] or [R1, R2] == [0, 0]:
-            reward += Contact_penalty
+        # 平滑性奖励
+        velocity_changes = np.abs(np.diff(self.joint_velocities, axis=0))
+        rewards["smoothness_penalty"] = -np.sum(velocity_changes)
 
-        # Progress reward
-        reward += math.exp(-(abs(px - x_Goal) + abs(py - y_Goal)))
-        # reward += k2 * math.exp(-(abs(px-x_Goal) + abs(py-y_Goal))) # an additional coefficient can be added
+        # 汇总奖励
+        total_reward = sum(rewards.values())
+        return total_reward, rewards
 
-        # Mass Centre reward
-        reward += math.exp(-abs(pz - z_Goal))
-        # reward += k3 * math.exp(-abs(pz-z_Goal))  # an additional coefficient can be added
+    def calculate_actual_gait_period(self):
+        """
+        步态周期计算逻辑，根据关节速度的零点判断完整周期。
+        """
+        # 示例实现：假设 joint_velocities 是一个 numpy 数组
+        velocities = np.array(self.joint_velocities)
+        zero_crossings = np.where(np.diff(np.sign(velocities[:, 0])))[0]  # 检测第一个关节的速度零点
+        if len(zero_crossings) < 2:
+            return 0  # 未形成完整周期
+        period = (zero_crossings[-1] - zero_crossings[-2]) * self.time_step
+        return period
 
-        # Stability penalty
-        reward += min(0, r_allow - abs(r)) + min(0, p_allow - abs(p))
-        # reward += k5 * (min(0, r_allow - abs(r)) + min(0, p_allow - abs(p)))  # an additional coefficient can be added
-
-        return reward
 
     def calculate_rpy(
         self, Quaternion
@@ -362,12 +366,12 @@ class Ji_Dog_Env(gym.Env):
         observation = self.get_observation()
 
         # Calculate reward
-        reward = self.calculate_reward()
+        total_reward, rewards = self.calculate_reward()
 
         # Check if done
         done = self.is_done()
 
-        return observation, reward, done, {}
+        return observation, total_reward, rewards, done, {}
 
     def set_goal(self):
         self.goal = [0.0, -5.0, 0.5]
@@ -406,7 +410,7 @@ def main():
     # Assume we have a random action generator
     for step in range(num_steps):
         # Perform one simulation step, return observation, reward, done status, and additional info
-        observation, reward, done, info = dog.step(dog.t)
+        state, total_reward, rewards, done, info = dog.step(dog.t)
 
         dog.t += dt
 

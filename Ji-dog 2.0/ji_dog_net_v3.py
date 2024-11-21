@@ -5,6 +5,7 @@ import numpy as np
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 class RolloutBuffer:
     def __init__(self):
         self.actions = []
@@ -22,41 +23,43 @@ class RolloutBuffer:
         del self.state_values[:]
         del self.is_terminals[:]
 
+
 class ActorCritic_Clip(nn.Module):
-    def __init__(self, state_dim, action_dim, action_std_init=0.6):
+    def __init__(self, state_dim, action_dim, hidden_size=128, num_layers=1, action_std_init=0.6):
         super(ActorCritic_Clip, self).__init__()
         self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
 
         # Actor network
-        self.actor_fc1 = nn.Linear(state_dim, 128)
-        self.actor_fc2 = nn.Linear(128, 256)
-        self.actor_fc3 = nn.Linear(256, 128)
-        self.actor_lstm = nn.LSTM(128, 128, num_layers=1, batch_first=True)
-        self.actor_fc4 = nn.Linear(128, action_dim)
+        self.actor_fc1 = nn.Linear(state_dim, hidden_size)
+        self.actor_fc2 = nn.Linear(hidden_size, hidden_size * 2)
+        self.actor_fc3 = nn.Linear(hidden_size * 2, hidden_size)
+        self.actor_lstm = nn.LSTM(hidden_size, hidden_size, num_layers=num_layers, batch_first=True)
+        self.actor_fc4 = nn.Linear(hidden_size, action_dim)
         self.actor_activation = nn.Tanh()
 
         # Critic network
-        self.critic_fc1 = nn.Linear(state_dim, 128)
-        self.critic_fc2 = nn.Linear(128, 256)
-        self.critic_fc3 = nn.Linear(256, 128)
-        self.critic_lstm = nn.LSTM(128, 128, num_layers=1, batch_first=True)
-        self.critic_fc4 = nn.Linear(128, 1)
+        self.critic_fc1 = nn.Linear(state_dim, hidden_size)
+        self.critic_fc2 = nn.Linear(hidden_size, hidden_size * 2)
+        self.critic_fc3 = nn.Linear(hidden_size * 2, hidden_size)
+        self.critic_lstm = nn.LSTM(hidden_size, hidden_size, num_layers=num_layers, batch_first=True)
+        self.critic_fc4 = nn.Linear(hidden_size, 1)
 
     def forward(self):
         raise NotImplementedError
-        
+
     def act(self, state, hidden_actor=None):
         batch_size = state.size(0) if len(state.shape) > 1 else 1
         if hidden_actor is None:
+            # Ensure hidden_actor is properly initialized
             hidden_actor = (
                 torch.zeros(1, batch_size, 128).to(device),
-                torch.zeros(1, batch_size, 128).to(device)
+                torch.zeros(1, batch_size, 128).to(device),
             )
 
         x = torch.relu(self.actor_fc1(state))
         x = torch.relu(self.actor_fc2(x))
         x = torch.relu(self.actor_fc3(x))
-        
+
         x = x.unsqueeze(0).unsqueeze(1)  # Shape: (1, 1, 128)
         x, hidden_actor = self.actor_lstm(x, hidden_actor)
         x = x.squeeze(0).squeeze(0)
@@ -69,27 +72,23 @@ class ActorCritic_Clip(nn.Module):
 
         return action.detach(), action_logprob.detach(), hidden_actor
 
-
     def evaluate(self, state, action, hidden_critic=None):
-        # Dynamically initialize hidden state for critic based on batch size
         batch_size = state.size(0) if len(state.shape) > 1 else 1
         if hidden_critic is None:
             hidden_critic = (
                 torch.zeros(1, batch_size, 128).to(device),
-                torch.zeros(1, batch_size, 128).to(device)
+                torch.zeros(1, batch_size, 128).to(device),
             )
 
         x = torch.relu(self.critic_fc1(state))
         x = torch.relu(self.critic_fc2(x))
         x = torch.relu(self.critic_fc3(x))
-        # Adjust the dimensions to be compatible with LSTM
-        x = x.unsqueeze(1)  # Shape: (batch_size, 1, 128)
+        x = x.unsqueeze(1)
         x, hidden_critic = self.critic_lstm(x, hidden_critic)
-        x = x.squeeze(1)  # Remove the sequence dimension
+        x = x.squeeze(1)
 
         state_value = self.critic_fc4(x)
-        
-        # Actor part for logprobs and entropy calculation
+
         action_mean = self.actor_activation(self.actor_fc4(x))
         action_var = self.action_var.expand_as(action_mean)
         cov_mat = torch.diag_embed(action_var).to(device)
@@ -98,7 +97,6 @@ class ActorCritic_Clip(nn.Module):
         dist_entropy = dist.entropy()
 
         return action_logprobs, state_value, dist_entropy, hidden_critic
-
 
     def evaluate_critic(self, state, hidden_critic = None):
         batch_size = state.size(0) if len(state.shape) > 1 else 1
@@ -118,6 +116,8 @@ class ActorCritic_Clip(nn.Module):
         return state_value
 
     def compute_loss(self, old_logprobs, logprobs, state_values, rewards, old_values, dist_entropy, advantages, eps_clip):
+        # Normalize advantages
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-7)  # Added normalization
         ratios = torch.exp(logprobs - old_logprobs)
         surr1 = ratios * advantages
         surr2 = torch.clamp(ratios, 1 - eps_clip, 1 + eps_clip) * advantages
@@ -127,6 +127,7 @@ class ActorCritic_Clip(nn.Module):
         total_loss = policy_loss + value_loss + entropy_bonus
         return total_loss, policy_loss, value_loss, dist_entropy.mean()
 
+
 class PPO_Clip:
     def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, action_std_init=0.6):
         self.gamma = gamma
@@ -134,14 +135,25 @@ class PPO_Clip:
         self.K_epochs = K_epochs
         self.buffer = RolloutBuffer()
 
-        self.policy = ActorCritic_Clip(state_dim, action_dim, action_std_init).to(device)
+        self.policy = ActorCritic_Clip(state_dim, action_dim, action_std_init=action_std_init).to(device)
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr_actor)
 
-        self.policy_old = ActorCritic_Clip(state_dim, action_dim, action_std_init).to(device)
+        self.policy_old = ActorCritic_Clip(state_dim, action_dim, action_std_init=action_std_init).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
 
         self.hidden_actor = None
         self.hidden_critic = None
+
+    def reset_hidden_states(self):
+        # Reset hidden states for LSTM
+        self.hidden_actor = (
+            torch.zeros(1, 1, 128).to(device),
+            torch.zeros(1, 1, 128).to(device),
+        )
+        self.hidden_critic = (
+            torch.zeros(1, 1, 128).to(device),
+            torch.zeros(1, 1, 128).to(device),
+        )
 
     def select_action(self, state):
         with torch.no_grad():
@@ -151,29 +163,54 @@ class PPO_Clip:
             state_value = self.policy.evaluate_critic(state_values, self.hidden_critic)
             self.buffer.states.append(state_values)
             self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob) 
-            self.buffer.state_values.append(state_value)  
-            
+            self.buffer.logprobs.append(action_logprob)
+            self.buffer.state_values.append(state_value)
+
         return action.detach().cpu().numpy()
-    
+
 
     def update(self):
         rewards = []
         discounted_reward = 0
-        for reward, is_terminal in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals)):
+        reward_contributions = {
+            "distance_reward": 0,
+            "fall_penalty": 0,
+            "symmetry_reward": 0,
+            "period_penalty": 0,
+            "contact_penalty": 0,
+            "smoothness_penalty": 0,
+        }
+
+        # 计算折扣奖励和各部分奖励贡献
+        for reward, is_terminal, contributions in zip(reversed(self.buffer.rewards),
+                                                    reversed(self.buffer.is_terminals),
+                                                    reversed(self.buffer.reward_contributions)):
             if is_terminal:
                 discounted_reward = 0
             discounted_reward = reward + (self.gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
 
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
-        # rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
-        # rewards = rewards.view(-1, 1)
-        
-        # Change
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
-        rewards = torch.clamp(rewards, min=-10, max=10) 
+            for key in reward_contributions:
+                reward_contributions[key] += contributions[key]
 
+        # 记录到 TensorBoard
+        for key, value in reward_contributions.items():
+            self.writer.add_scalar(f"Reward Contributions/{key}", value, self.current_episode)
+
+        # 继续 PPO 更新
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+    # def update(self):
+    #     rewards = []
+    #     discounted_reward = 0
+    #     for reward, is_terminal in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals)):
+    #         if is_terminal:
+    #             discounted_reward = 0
+    #         discounted_reward = reward + (self.gamma * discounted_reward)
+    #         rewards.insert(0, discounted_reward)
+
+    #     rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)  # Normalize rewards
+        rewards = torch.clamp(rewards, min=-10, max=10)  # Limit reward range
 
         old_states = torch.stack(self.buffer.states).detach().to(device)
         old_actions = torch.stack(self.buffer.actions).detach().to(device)
@@ -197,7 +234,7 @@ class PPO_Clip:
                 old_values=old_state_values,
                 dist_entropy=dist_entropy,
                 advantages=advantages,
-                eps_clip=self.eps_clip
+                eps_clip=self.eps_clip,
             )
 
             self.optimizer.zero_grad()
@@ -217,15 +254,29 @@ class PPO_Clip:
             total_loss / self.K_epochs,
             total_policy_loss / self.K_epochs,
             total_value_loss / self.K_epochs,
-            total_entropy / self.K_epochs
+            total_entropy / self.K_epochs,
         )
 
     def save(self, checkpoint_path):
-        torch.save(self.policy_old.state_dict(), checkpoint_path)
-   
+        # Save optimizer state as well
+        torch.save(
+            {
+                "model_state_dict": self.policy.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+            },
+            checkpoint_path,
+        )
+
     def load(self, checkpoint_path):
-        self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
+        self.policy.eval()  # 切换到评估模式
+        self.policy_old.load_state_dict(self.policy.state_dict())  # 同步到旧策略
+
+
+
+    # def load(self, checkpoint_path):
+    #     self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
+    #     self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         
         
 def process_state(state):

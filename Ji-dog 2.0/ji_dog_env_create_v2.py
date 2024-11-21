@@ -56,10 +56,10 @@ class Ji_Dog_Env(gym.Env):
 
         # Define action and observation spaces for reinforcement learning
         self.action_space = gym.spaces.Box(
-            low=-1.0, high=1.0, shape=(4,), dtype=np.float32
+            low=-1.0, high=1.0, shape=(8,), dtype=np.float32
         )
         self.observation_space = gym.spaces.Box(
-            low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(20,), dtype=np.float32
         )
 
     def setup_scene(self):
@@ -94,10 +94,10 @@ class Ji_Dog_Env(gym.Env):
 
         self.physx_interface = get_physx_interface()
         self.contact_data = {
-            "leg1": True,
-            "leg2": True,
-            "leg3": True,
-            "leg4": True,
+            "lleg1": True,
+            "lleg2": True,
+            "lleg3": True,
+            "lleg4": True,
         }
         # Use physics step event
         self.physx_interface.subscribe_physics_on_step_events(
@@ -156,9 +156,7 @@ class Ji_Dog_Env(gym.Env):
     def generate_alternating_gait(self):
         """Generate alternating gait movements"""
         # Current time of the cycle
-        phase = (
-            self.t // self.time_period
-        ) % 2  # Cycle control for alternating movement
+        phase = (self.t // self.time_period) % 2  # Cycle control for alternating movement
         action = []
 
         if phase == 0:
@@ -302,9 +300,7 @@ class Ji_Dog_Env(gym.Env):
 
         return reward
 
-    def calculate_rpy(
-        self, Quaternion
-    ):  # convert quaternion to roll pitch yaw (r, p, y)
+    def calculate_rpy(self, Quaternion):  # convert quaternion to roll pitch yaw (r, p, y)
 
         # Quaternion
         qw = Quaternion[0]
@@ -343,12 +339,12 @@ class Ji_Dog_Env(gym.Env):
             if self.gait_flag:
                 action = self.generate_alternating_gait()
             else:
-                action = 500 * setp_action
+                action = setp_action
 
             # asyncio.run(self.control_joints_async(action))
             action = ArticulationAction(
-                joint_positions = None,
-                joint_efforts= action,
+                joint_positions = action,
+                joint_efforts=None,
                 joint_velocities= None,
             )
             # print("move", action)
@@ -370,7 +366,7 @@ class Ji_Dog_Env(gym.Env):
         return observation, reward, done, {}
 
     def set_goal(self):
-        self.goal = [0.0, -5.0, 0.5]
+        self.goal = [10.0, 10.0, 0.5]
         return
 
     def is_done(self):
@@ -390,7 +386,7 @@ class Ji_Dog_Env(gym.Env):
 
 def main():
     # Initialize the environment
-    dog = Ji_Dog_Env('/home/bai/.local/share/ov/pkg/isaac-sim-4.2.0/Ji-dog 2.0/Model(including video)/ji_dog1.0.usd')
+    dog = Ji_Dog_Env('/home/bai/.local/share/ov/pkg/isaac-sim-4.2.0/Ji-dog 2.0/Model(including video)/ji_dog.usd')
 
     simulation_app.update()
     dog.setup()
@@ -399,7 +395,7 @@ def main():
     simulation_app.update()
 
     # Define the total number of steps to run
-    num_steps = 500
+    num_steps = 50000
     dog.t = 0
     dt = 0.05
 
