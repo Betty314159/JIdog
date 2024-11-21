@@ -14,6 +14,7 @@ class RolloutBuffer:
         self.rewards = []
         self.state_values = []
         self.is_terminals = []
+        self.reward_contributions = []
 
     def clear(self):
         del self.actions[:]
@@ -22,7 +23,7 @@ class RolloutBuffer:
         del self.rewards[:]
         del self.state_values[:]
         del self.is_terminals[:]
-
+        del self.reward_contributions[:]
 
 class ActorCritic_Clip(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_size=128, num_layers=1, action_std_init=0.6):
@@ -168,7 +169,7 @@ class PPO_Clip:
 
         return action.detach().cpu().numpy()
 
-
+    ### Change !!!
     def update(self):
         rewards = []
         discounted_reward = 0
@@ -179,9 +180,11 @@ class PPO_Clip:
             "period_penalty": 0,
             "contact_penalty": 0,
             "smoothness_penalty": 0,
+            "progress_reward":0,
+            "mass_centre_reward":0,
+            "stability_penalty":0,
         }
-
-        # 计算折扣奖励和各部分奖励贡献
+        
         for reward, is_terminal, contributions in zip(reversed(self.buffer.rewards),
                                                     reversed(self.buffer.is_terminals),
                                                     reversed(self.buffer.reward_contributions)):
@@ -193,11 +196,9 @@ class PPO_Clip:
             for key in reward_contributions:
                 reward_contributions[key] += contributions[key]
 
-        # 记录到 TensorBoard
-        for key, value in reward_contributions.items():
-            self.writer.add_scalar(f"Reward Contributions/{key}", value, self.current_episode)
+        # for key, value in reward_contributions.items():
+        #     self.writer.add_scalar(f"Reward Contributions/{key}", value, self.current_episode)
 
-        # 继续 PPO 更新
         rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
     # def update(self):
     #     rewards = []
@@ -257,6 +258,7 @@ class PPO_Clip:
             total_entropy / self.K_epochs,
         )
 
+    # Change
     def save(self, checkpoint_path):
         # Save optimizer state as well
         torch.save(
@@ -269,7 +271,7 @@ class PPO_Clip:
 
     def load(self, checkpoint_path):
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
-        self.policy.eval()  # 切换到评估模式
+        self.policy.eval()  
         self.policy_old.load_state_dict(self.policy.state_dict())  # 同步到旧策略
 
 

@@ -251,15 +251,15 @@ class Ji_Dog_Env(gym.Env):
     def calculate_reward(self):
         # pos, ori are position and orientation of the mass centre of the dog
         # cont is the contact indicator of the dogs
-        reward = 0 + 4.1
+        reward = 0 
         pos = self.robot_position
         ori = self.robot_orientation
         cont = self.contact_state
 
         [x_Goal, y_Goal, z_Goal] = self.goal  # x,y position of goal
-        Goal_reward = 100  # define Goal reward
+        Goal_reward = 50  # define Goal reward
         Fall_penalty = -10  # define Fall penalty
-        Contact_penalty = -5  # define Contact Point Penalty
+        Contact_penalty = -1  # define Contact Point Penalty
         r_allow = 10  # degree unit
         p_allow = 10  # degree unit
 
@@ -274,6 +274,10 @@ class Ji_Dog_Env(gym.Env):
         R1 = cont[2]  # right legs
         R2 = cont[3]
 
+        k2 = 10
+        k3 = 10
+        k5 = 10
+
         # Goal reward
         if px == x_Goal and py == y_Goal:
             reward += Goal_reward
@@ -287,16 +291,16 @@ class Ji_Dog_Env(gym.Env):
             reward += Contact_penalty
 
         # Progress reward
-        reward += math.exp(-(abs(px - x_Goal) + abs(py - y_Goal)))
-        # reward += k2 * math.exp(-(abs(px-x_Goal) + abs(py-y_Goal))) # an additional coefficient can be added
+        # reward += math.exp(-(abs(px - x_Goal) + abs(py - y_Goal)))
+        reward += k2 * math.exp(-(abs(px-x_Goal) + abs(py-y_Goal))) # an additional coefficient can be added
 
         # Mass Centre reward
-        reward += math.exp(-abs(pz - z_Goal))
-        # reward += k3 * math.exp(-abs(pz-z_Goal))  # an additional coefficient can be added
+        # reward += math.exp(-abs(pz - z_Goal))
+        reward += k3 * math.exp(-abs(pz-z_Goal))  # an additional coefficient can be added
 
         # Stability penalty
-        reward += min(0, r_allow - abs(r)) + min(0, p_allow - abs(p))
-        # reward += k5 * (min(0, r_allow - abs(r)) + min(0, p_allow - abs(p)))  # an additional coefficient can be added
+        # reward += min(0, r_allow - abs(r)) + min(0, p_allow - abs(p))
+        reward += k5 * (min(0, r_allow - abs(r)) + min(0, p_allow - abs(p)))  # an additional coefficient can be added
 
         return reward
 

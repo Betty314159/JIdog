@@ -252,7 +252,34 @@ class Ji_Dog_Env(gym.Env):
         return observation
 
     def calculate_reward(self):
-        # 分解奖励部分
+        reward = 0
+        pos = self.robot_position
+        ori = self.robot_orientation
+        cont = self.contact_state
+
+        [x_Goal, y_Goal, z_Goal] = self.goal  # x,y position of goal
+        Goal_reward = 50  # define Goal reward
+        Fall_penalty = -10  # define Fall penalty
+        Contact_penalty = -1  # define Contact Point Penalty
+        r_allow = 10  # degree unit
+        p_allow = 10  # degree unit
+
+        px = pos[0]
+        py = pos[1]
+        pz = pos[2]
+        [r, p, y] = ori
+
+        # Contact point definition according to the professor
+        L1 = cont[0]  # left legs
+        L2 = cont[1]
+        R1 = cont[2]  # right legs
+        R2 = cont[3]
+
+        k2 = 10
+        k3 = 10
+        k5 = 10
+
+        ### Change begin!!!
         rewards = {
             "distance_reward": 0,
             "fall_penalty": 0,
@@ -260,51 +287,64 @@ class Ji_Dog_Env(gym.Env):
             "period_penalty": 0,
             "contact_penalty": 0,
             "smoothness_penalty": 0,
+            "progress_reward":0,
+            "mass_centre_reward":0,
+            "stability_penalty":0,
         }
 
-        # 目标点奖励
+        # Goal reward
         distance_to_goal = np.sqrt((self.robot_position[0] - self.goal[0]) ** 2 +
                                 (self.robot_position[1] - self.goal[1]) ** 2)
         normalized_distance = 1 - (distance_to_goal / 10)
-        rewards["distance_reward"] = 100 * normalized_distance
+        rewards["distance_reward"] = 50 * normalized_distance
 
-        # 摔倒惩罚
+        # Fall Penalty
         if self.robot_position[2] < 0.1 or abs(self.robot_orientation[1]) > 20:
             rewards["fall_penalty"] = -10
 
-        # 对称奖励
+        # Symmetry reward
         rewards["symmetry_reward"] = -np.abs(self.joint_positions[0][0] - self.joint_positions[0][2]) - \
                                     np.abs(self.joint_positions[0][1] - self.joint_positions[0][3])
 
-        # 周期性惩罚
+        # Period penalty
         actual_period = self.calculate_actual_gait_period()
         rewards["period_penalty"] = -np.abs(1.0 - actual_period)
 
-        # 接触点奖励
+        # Contact penalty
         desired_contact_pattern = [[1, 0, 1, 0], [0, 1, 0, 1]]
         if  self.on_step() not in desired_contact_pattern:
             rewards["contact_penalty"] = -1
 
-        # 平滑性奖励
+        # Smoothness penalty
         velocity_changes = np.abs(np.diff(self.joint_velocities, axis=0))
         rewards["smoothness_penalty"] = -np.sum(velocity_changes)
 
-        # 汇总奖励
+        # Progress reward
+        rewards["progress_reward"] = k2 * math.exp(-(abs(px - x_Goal) + abs(py - y_Goal)))
+        # reward += k2 * math.exp(-(abs(px-x_Goal) + abs(py-y_Goal))) # an additional coefficient can be added
+
+        # Mass centre reward
+        rewards["mass_centre_reward"] = k3 *math.exp(-abs(pz - z_Goal))
+        # reward += k3 * math.exp(-abs(pz-z_Goal))  # an additional coefficient can be added
+
+        # Stability penalty
+        rewards["stability_penalty"] = k5 * min(0, r_allow - abs(r)) + min(0, p_allow - abs(p))
+        # reward += k5 * (min(0, r_allow - abs(r)) + min(0, p_allow - abs(p)))  # an additional coefficient can be added
+
+        # total reward
         total_reward = sum(rewards.values())
+
         return total_reward, rewards
 
     def calculate_actual_gait_period(self):
-        """
-        步态周期计算逻辑，根据关节速度的零点判断完整周期。
-        """
-        # 示例实现：假设 joint_velocities 是一个 numpy 数组
         velocities = np.array(self.joint_velocities)
         zero_crossings = np.where(np.diff(np.sign(velocities[:, 0])))[0]  # 检测第一个关节的速度零点
         if len(zero_crossings) < 2:
-            return 0  # 未形成完整周期
+            return 0  
         period = (zero_crossings[-1] - zero_crossings[-2]) * self.time_step
         return period
 
+    ### Change end!!!
 
     def calculate_rpy(
         self, Quaternion
