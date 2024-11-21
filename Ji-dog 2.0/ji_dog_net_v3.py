@@ -272,7 +272,7 @@ class PPO_Clip:
     def load(self, checkpoint_path):
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         self.policy.eval()  
-        self.policy_old.load_state_dict(self.policy.state_dict())  # 同步到旧策略
+        self.policy_old.load_state_dict(self.policy.state_dict()) 
 
 
 
