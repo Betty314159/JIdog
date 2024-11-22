@@ -259,21 +259,28 @@ class PPO_Clip:
         )
 
     # Change
+    # def save(self, checkpoint_path):
+    #     # Save optimizer state as well
+    #     torch.save(
+    #         {
+    #             "model_state_dict": self.policy.state_dict(),
+    #             "optimizer_state_dict": self.optimizer.state_dict(),
+    #         },
+    #         checkpoint_path,
+    #     )
+
     def save(self, checkpoint_path):
-        # Save optimizer state as well
-        torch.save(
-            {
-                "model_state_dict": self.policy.state_dict(),
-                "optimizer_state_dict": self.optimizer.state_dict(),
-            },
-            checkpoint_path,
-        )
-
+        torch.save(self.policy_old.state_dict(), checkpoint_path)
+   
     def load(self, checkpoint_path):
+        self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
-        self.policy.eval()  
-        self.policy_old.load_state_dict(self.policy.state_dict()) 
+        
 
+    # def load(self, checkpoint_path):
+    #     # Load model weights only
+    #     checkpoint = torch.load(checkpoint_path, map_location=lambda storage, loc: storage, weights_only=True)
+    #     self.policy.load_state_dict(checkpoint)
 
 
     # def load(self, checkpoint_path):

@@ -21,7 +21,7 @@ import math
 import gym
 from omni.isaac.core.objects import DynamicCuboid
 import numpy as np
-
+import time
 
 class Ji_Dog_Env(gym.Env):
     def __init__(self, usd_path) -> None:
@@ -69,6 +69,11 @@ class Ji_Dog_Env(gym.Env):
         # Add ground
         self._world.scene.add_default_ground_plane()
 
+        if self.slope_flag:
+            self.setup_slope()
+            time.sleep(10) 
+
+
         add_reference_to_stage(
             usd_path= self.usd_path,
             prim_path="/World/Robot",
@@ -114,8 +119,6 @@ class Ji_Dog_Env(gym.Env):
         #     "Num of degrees of freedom before first reset: " + str(self.robot.num_dof)
         # )
 
-        if self.slope_flag:
-            self.setup_slope()
 
         return
 
@@ -124,6 +127,7 @@ class Ji_Dog_Env(gym.Env):
             prim_path="/World/Slope",
             name="slope",
             position=[0, 0, 0],
+            orientation= [-25,0,0,0],
             size=1.0,
             mass=100,
         )
@@ -260,7 +264,7 @@ class Ji_Dog_Env(gym.Env):
         [x_Goal, y_Goal, z_Goal] = self.goal  # x,y position of goal
         Goal_reward = 50  # define Goal reward
         Fall_penalty = -10  # define Fall penalty
-        Contact_penalty = -1  # define Contact Point Penalty
+        Contact_penalty = -0.1  # define Contact Point Penalty
         r_allow = 10  # degree unit
         p_allow = 10  # degree unit
 
@@ -276,8 +280,8 @@ class Ji_Dog_Env(gym.Env):
         R2 = cont[3]
 
         k2 = 10
-        k3 = 10
-        k5 = 10
+        k3 = 1
+        k5 = 1
 
         ### Change begin!!!
         rewards = {
@@ -296,10 +300,10 @@ class Ji_Dog_Env(gym.Env):
         distance_to_goal = np.sqrt((self.robot_position[0] - self.goal[0]) ** 2 +
                                 (self.robot_position[1] - self.goal[1]) ** 2)
         normalized_distance = 1 - (distance_to_goal / 10)
-        rewards["distance_reward"] = 50 * normalized_distance
+        rewards["distance_reward"] = 1 * sum(self.goal)/2 * normalized_distance
 
         # Fall Penalty
-        if self.robot_position[2] < 0.1 or abs(self.robot_orientation[1]) > 20:
+        if self.robot_position[2] < 0.2 or abs(self.robot_orientation[1]) > 20:
             rewards["fall_penalty"] = -10
 
         # Symmetry reward
@@ -311,34 +315,37 @@ class Ji_Dog_Env(gym.Env):
         rewards["period_penalty"] = -np.abs(1.0 - actual_period)
 
         # Contact penalty
+        if [L1, L2, R1, R2] == [1, 1, 1, 1] or [L1, L2] == [0, 0] or [R1, R2] == [0, 0]:
+            rewards["contact_penalty"] += Contact_penalty
         desired_contact_pattern = [[1, 0, 1, 0], [0, 1, 0, 1]]
         if  self.on_step() not in desired_contact_pattern:
-            rewards["contact_penalty"] = -1
+            rewards["contact_penalty"] += Contact_penalty
+
+        relaxed_patterns = [[1, 1, 0, 0], [0, 0, 1, 1]]
+        if self.on_step() not in (desired_contact_pattern + relaxed_patterns):
+            rewards["contact_penalty"] = -0.5
+
 
         # Smoothness penalty
         velocity_changes = np.abs(np.diff(self.joint_velocities, axis=0))
-        rewards["smoothness_penalty"] = -np.sum(velocity_changes)
+        rewards["smoothness_penalty"] = - 0.5 * np.sum(velocity_changes)
 
         # Progress reward
         rewards["progress_reward"] = k2 * math.exp(-(abs(px - x_Goal) + abs(py - y_Goal)))
-        # reward += k2 * math.exp(-(abs(px-x_Goal) + abs(py-y_Goal))) # an additional coefficient can be added
 
         # Mass centre reward
         rewards["mass_centre_reward"] = k3 *math.exp(-abs(pz - z_Goal))
-        # reward += k3 * math.exp(-abs(pz-z_Goal))  # an additional coefficient can be added
 
         # Stability penalty
         rewards["stability_penalty"] = k5 * min(0, r_allow - abs(r)) + min(0, p_allow - abs(p))
-        # reward += k5 * (min(0, r_allow - abs(r)) + min(0, p_allow - abs(p)))  # an additional coefficient can be added
 
-        # total reward
         total_reward = sum(rewards.values())
 
         return total_reward, rewards
 
     def calculate_actual_gait_period(self):
         velocities = np.array(self.joint_velocities)
-        zero_crossings = np.where(np.diff(np.sign(velocities[:, 0])))[0]  
+        zero_crossings = np.where(np.diff(np.sign(velocities[:, 0])))[0]  # 检测第一个关节的速度零点
         if len(zero_crossings) < 2:
             return 0  
         period = (zero_crossings[-1] - zero_crossings[-2]) * self.time_step
@@ -387,12 +394,12 @@ class Ji_Dog_Env(gym.Env):
             if self.gait_flag:
                 action = self.generate_alternating_gait()
             else:
-                action = 500 * setp_action
+                action =  500*setp_action
 
             # asyncio.run(self.control_joints_async(action))
             action = ArticulationAction(
-                joint_positions = None,
-                joint_efforts= action,
+                joint_positions = action,
+                joint_efforts= None,
                 joint_velocities= None,
             )
             # print("move", action)
@@ -414,7 +421,7 @@ class Ji_Dog_Env(gym.Env):
         return observation, total_reward, rewards, done, {}
 
     def set_goal(self):
-        self.goal = [0.0, -5.0, 0.5]
+        self.goal = [0.0, -2.0, 0.5]
         return
 
     def is_done(self):
